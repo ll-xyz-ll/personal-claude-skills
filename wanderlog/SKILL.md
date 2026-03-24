@@ -43,9 +43,8 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 | `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, January 15") | Step 1 of add flow. Then use `computer tool type` for search query. |
 | `click-first-result.js` | Click first place result in autocomplete dropdown | none | Step 3 of add flow. Run after typing search query. Retries for 2s. |
 | `delete-item.js` | Delete item via React fiber `onDelete` | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Immediate, no confirmation dialog. |
-| `ws-capture.js` | Capture Wanderlog's live WebSocket | none | Run once per page load. User must interact with page after. |
-| `ws-reorder.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__`, `__TARGET_INDEX__` | Requires ws-capture.js first. Reliable — persists to server. |
-| `reorder-item.js` | Reorder item (wrapper for ws-reorder) | `__ITEM_NAME__`, `__DATE__`, `__TARGET_INDEX__` | Same as ws-reorder.js. Preferred entry point. |
+| `ws-capture.js` | Capture Wanderlog's live WebSocket | none | Run once per page load. User must interact with page after. Uses `configurable: false` — cannot be undone without page reload. |
+| `reorder-item.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD), `__TARGET_INDEX__` (0-based) | Requires ws-capture.js first. Filters by date then falls back to name-only search. |
 
 ### Legacy Scripts (Use Only for Cross-Day Moves)
 
@@ -106,7 +105,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 1. Use web search + knowledge to suggest restaurants/places
 2. Present plan to user for approval
 3. For each approved item: `add-place-v2.js` → `computer type` → `click-first-result.js`
-4. Reorder items within each day using `reorder-item.js` + keyboard
+4. Reorder items within each day using `reorder-item.js` (ShareDB `lm` ops)
 5. Verify with `scrape-itinerary.js`
 
 ## Day Name Formats

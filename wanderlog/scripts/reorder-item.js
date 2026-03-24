@@ -1,15 +1,16 @@
-// reorder-item.js — Reorder an item within a day
+// reorder-item.js — Reorder an item within a day via ShareDB WebSocket `lm` ops
 // Params: __ITEM_NAME__ (exact item name), __DATE__ (YYYY-MM-DD), __TARGET_INDEX__ (0-based)
 //
-// PREFERRED METHOD: Use ws-reorder.js via ShareDB WebSocket `lm` ops.
-//   Prereq: Run ws-capture.js first, then user must interact with page once.
-//   This script is a WRAPPER that delegates to ws-reorder.js logic.
+// Prereq: Run ws-capture.js first, then user must interact with page once.
 //
-// DEPRECATED METHOD: Keyboard drag via react-beautiful-dnd.
-//   Status: UNRELIABLE — lift works ~50%, drop never persists.
-//   - Programmatic onDragEnd is silently ignored by rbd
-//   - Mouse drag doesn't work via browser automation
-//   - The only reliable reorder is via ShareDB ops (ws-reorder.js)
+// How it works:
+//   1. Subscribes to the trip doc via ShareDB to get current version + structure
+//   2. Finds the section matching __DATE__ and block matching __ITEM_NAME__
+//   3. Sends a ShareDB `lm` (list move) op to reorder
+//
+// NOTE: Keyboard drag via react-beautiful-dnd is unreliable (lift ~50%, drop
+// never persists). Programmatic onDragEnd is silently ignored. ShareDB `lm`
+// ops are the only reliable reorder method.
 //
 // Returns { status, detail, fromIndex, toIndex, sectionIndex }
 (() => {
@@ -31,6 +32,7 @@
   }
   const tripId = match[1];
 
+  const seqId = Date.now() % 100000;
   const responses = [];
   const handler = (event) => {
     try { responses.push(JSON.parse(event.data)); } catch(e) {}
@@ -57,15 +59,39 @@
         return;
       }
 
+      // Find the section matching DATE and block matching ITEM_NAME
       let sectionIndex = -1, blockIndex = -1;
       for (let si = 0; si < doc.itinerary.sections.length; si++) {
         const sec = doc.itinerary.sections[si];
         if (!sec.blocks) continue;
+
+        // Match section to DATE via the section's date field or startDate
+        const secDate = sec.date || sec.startDate || '';
+        if (DATE && secDate && !secDate.includes(DATE)) continue;
+
         for (let bi = 0; bi < sec.blocks.length; bi++) {
-          const name = sec.blocks[bi].place?.name || sec.blocks[bi].place?.googlePlace?.name || '';
-          if (name === ITEM_NAME) { sectionIndex = si; blockIndex = bi; break; }
+          const b = sec.blocks[bi];
+          const name = b.place?.name || b.place?.googlePlace?.name || '';
+          if (name === ITEM_NAME) {
+            sectionIndex = si;
+            blockIndex = bi;
+            break;
+          }
         }
         if (sectionIndex >= 0) break;
+      }
+
+      // Fallback: if date filtering found nothing, search all sections
+      if (sectionIndex < 0) {
+        for (let si = 0; si < doc.itinerary.sections.length; si++) {
+          const sec = doc.itinerary.sections[si];
+          if (!sec.blocks) continue;
+          for (let bi = 0; bi < sec.blocks.length; bi++) {
+            const name = sec.blocks[bi].place?.name || sec.blocks[bi].place?.googlePlace?.name || '';
+            if (name === ITEM_NAME) { sectionIndex = si; blockIndex = bi; break; }
+          }
+          if (sectionIndex >= 0) break;
+        }
       }
 
       if (sectionIndex < 0) {
@@ -78,28 +104,29 @@
       if (blockIndex === TARGET_INDEX) {
         ws.removeEventListener('message', handler);
         res.status = 'no_change';
-        res.detail = 'Already at index ' + TARGET_INDEX;
+        res.detail = '"' + ITEM_NAME + '" is already at index ' + TARGET_INDEX;
         resolve(JSON.stringify(res));
         return;
       }
 
       ws.send(JSON.stringify({
         a: 'op', c: 'TripPlans', d: tripId,
-        v: version, seq: Date.now() % 100000, x: {},
+        v: version, seq: seqId, x: {},
         op: [{ p: ['itinerary', 'sections', sectionIndex, 'blocks', blockIndex], lm: TARGET_INDEX }]
       }));
 
       setTimeout(() => {
         ws.removeEventListener('message', handler);
-        const ack = responses.find(r => r.a === 'op' || (r.v !== undefined && r.v > version));
+        // Match ack by our seq number
+        const ack = responses.find(r => r.a === 'op' && r.seq === seqId);
         if (ack && !ack.error) {
           res.status = 'reordered';
-          res.detail = 'Moved "' + ITEM_NAME + '" from ' + blockIndex + ' to ' + TARGET_INDEX;
+          res.detail = 'Moved "' + ITEM_NAME + '" from index ' + blockIndex + ' to ' + TARGET_INDEX + ' in section ' + sectionIndex;
           res.fromIndex = blockIndex;
           res.toIndex = TARGET_INDEX;
           res.sectionIndex = sectionIndex;
         } else {
-          res.detail = 'Op failed: ' + (ack?.error || 'no ack');
+          res.detail = 'Op failed: ' + (ack?.error || 'no ack for seq ' + seqId);
         }
         resolve(JSON.stringify(res));
       }, 2000);
