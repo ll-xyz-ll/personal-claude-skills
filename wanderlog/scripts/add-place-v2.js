@@ -1,5 +1,5 @@
 // add-place-v2.js — Add a place to a specific day
-// Params: __TARGET_DAY__ (e.g. "Thursday, May 7"), __SEARCH_QUERY__ (e.g. "Nakazakicho Osaka")
+// Params: __TARGET_DAY__ (e.g. "Thursday, January 15"), __SEARCH_QUERY__ (e.g. "Ramen Shop Tokyo")
 //
 // Step 1: Run this script to find and focus the correct "Add a place" input
 // Step 2: Use computer tool to type the search query (keyboard events trigger autocomplete)

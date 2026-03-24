@@ -1,5 +1,5 @@
 // add-place-full.js — Complete add-place flow for Wanderlog
-// Params: __TARGET_DAY__ (e.g. "Friday, May 8"), __SEARCH_QUERY__ (e.g. "Nakazakicho Osaka")
+// Params: __TARGET_DAY__ (e.g. "Friday, January 16"), __SEARCH_QUERY__ (e.g. "Ramen Shop Tokyo")
 //
 // Flow:
 // 1. Find and focus the correct day's "Add a place" input

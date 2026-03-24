@@ -1,5 +1,5 @@
 // find-items.js — Batch-find items in DOM by name, return positions
-// Params: __ITEM_NAMES__ (JSON array of strings, e.g. ["Eel eight","LeClerc","Maedaya"])
+// Params: __ITEM_NAMES__ (JSON array of strings, e.g. ["Place A","Place B","Place C"])
 // Returns { found: [{name, y, visible}], notFound: [...] }
 (() => {
   const ITEM_NAMES = __ITEM_NAMES__;

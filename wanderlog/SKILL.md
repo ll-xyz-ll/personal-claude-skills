@@ -7,7 +7,7 @@ description: >
   planning itineraries from scratch, adding new places, removing items, and batch moves.
   This skill should be used when the user says "rearrange my Wanderlog", "what's on my itinerary",
   "optimize my trip schedule", "move X to day Y", "add a restaurant to my trip",
-  "plan my Fukuoka food itinerary", "remove X from the trip", "show me what's on each day",
+  "plan my food itinerary", "remove X from the trip", "show me what's on each day",
   "spread out the food across days", or similar trip management requests.
   Requires Chrome tab with Wanderlog open and user logged in.
   If the trip hasn't been created yet, user must create it on wanderlog.com and provide the URL.
@@ -40,7 +40,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 | Script | Purpose | Params | Notes |
 |---|---|---|---|
 | `scrape-itinerary.js` | Read full itinerary via React fiber → JSON | none | Uses `PictureViewItem` + fiber. Returns `{ days, itemsByDay, stats }`. Dates are YYYY-MM-DD. |
-| `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, May 7") | Step 1 of add flow. Then use `computer tool type` for search query. |
+| `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, January 15") | Step 1 of add flow. Then use `computer tool type` for search query. |
 | `delete-item.js` | Delete item via React fiber `onDelete` | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Immediate, no confirmation dialog. |
 | `reorder-item.js` | Focus drag handle for keyboard reorder | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Step 1 of reorder. Then: `key space` → `key ArrowUp/Down repeat:N` → `key space`. |
 
@@ -60,25 +60,25 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 
 ## Capabilities
 
-### 1. Query Itinerary ("what's on May 3?")
+### 1. Query Itinerary ("what's on day 3?")
 1. Run `scrape-itinerary.js` — returns `{ days, itemsByDay, stats }` with YYYY-MM-DD keys
 2. Answer the user's question from the JSON data
 
-### 2. Add Place ("add Ichiran Ramen to May 1")
+### 2. Add Place ("add Restaurant X to Friday")
 **Three-step process — no clicking:**
-1. Run `add-place-v2.js` with `__TARGET_DAY__` = `"Friday, May 1"` → focuses the input
+1. Run `add-place-v2.js` with `__TARGET_DAY__` = `"Friday, January 16"` → focuses the input
 2. Use `computer` tool `action=type` with the search query → triggers autocomplete dropdown
 3. Use `computer` tool `action=screenshot` to see results, then click first result OR use JS to find and click the correct result element
 4. Verify with `scrape-itinerary.js`
 
 **Batch adding:** Repeat steps 1-3 for each place. The `add-place-v2.js` script re-finds the input each time.
 
-### 3. Delete Item ("remove teamLab from the trip")
+### 3. Delete Item ("remove Place X from the trip")
 1. Run `scrape-itinerary.js` to get exact item name and date (YYYY-MM-DD)
 2. Run `delete-item.js` with `__ITEM_NAME__` and `__DATE__`
 3. Verify with `scrape-itinerary.js`
 
-### 4. Reorder Within a Day ("move Byodo-in to the top of Friday")
+### 4. Reorder Within a Day ("move X to the top of Friday")
 **Keyboard drag via react-beautiful-dnd:**
 1. Run `scrape-itinerary.js` to get current order and calculate moves needed
 2. Run `reorder-item.js` with `__ITEM_NAME__` and `__DATE__` → focuses the drag handle
@@ -89,9 +89,9 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 
 **WARNING:** Calling `onDragEnd` programmatically does NOT work. Only real keyboard events persist the reorder.
 
-### 5. Move Item Between Days ("move Eel eight to May 3")
-1. `open-panel.js` with `__ITEM_NAME__` = "Eel eight"
-2. `move-item.js` with `__TARGET_DAY__` = "Sun, May 3rd", `__SOURCE_DAY__` = "Fri, May 1st"
+### 5. Move Item Between Days ("move Restaurant X to Sunday")
+1. `open-panel.js` with `__ITEM_NAME__` = "Restaurant X"
+2. `move-item.js` with `__TARGET_DAY__` = "Sun, Jan 19th", `__SOURCE_DAY__` = "Fri, Jan 16th"
 3. `verify-move.js` to confirm
 
 ### 6. Optimize / Rearrange ("spread food across days")
@@ -101,7 +101,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 4. Execute approved changes using add/delete/reorder/move scripts
 5. Run `scrape-itinerary.js` again to verify
 
-### 7. Plan From Scratch ("plan a 3-day Fukuoka food trip")
+### 7. Plan From Scratch ("plan a 3-day food trip")
 1. Use web search + knowledge to suggest restaurants/places
 2. Present plan to user for approval
 3. For each approved item: `add-place-v2.js` → `computer type` → select result
@@ -112,10 +112,10 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 
 | Context | Format | Example |
 |---|---|---|
-| React fiber / scraper | `YYYY-MM-DD` | `2026-05-01` |
-| add-place-v2.js param | `Weekday, Month D` | `Friday, May 1` |
-| Sidebar | `Day M/D` | `Fri 5/1`, `Mon 5/11` |
-| Dropdown (legacy moves) | `Day, Mon DDth` | `Fri, May 1st`, `Mon, May 11th` |
+| React fiber / scraper | `YYYY-MM-DD` | `2025-01-15` |
+| add-place-v2.js param | `Weekday, Month D` | `Friday, January 16` |
+| Sidebar | `Day M/D` | `Fri 1/16`, `Mon 1/19` |
+| Dropdown (legacy moves) | `Day, Mon DDth` | `Fri, Jan 16th`, `Mon, Jan 19th` |
 
 Always use `.includes()` when matching — never strict equality.
 

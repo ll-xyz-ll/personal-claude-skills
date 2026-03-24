@@ -1,5 +1,5 @@
 // focus-day-input.js — Focus the "Add a place" input for a specific day
-// Params: __TARGET_DAY__ (e.g. "Friday, May 8")
+// Params: __TARGET_DAY__ (e.g. "Friday, January 16")
 // Returns { status, detail }
 // After this, use computer tool to type search query, then run click-first-result.js
 (() => {

@@ -1,6 +1,6 @@
 # Wanderlog Skill — Lessons Learned
 
-## Session: 2026-03-24 (Osaka Leg Planning)
+## Session: Initial Development
 
 ### What Went Wrong
 
@@ -24,10 +24,10 @@
   3. **Computer tool** or **JS script** clicks the first search result
 
 #### 4. Sidebar navigation was unreliable
-**Problem:** Clicking "Thu 5/7" in the sidebar sometimes scrolled to the wrong day section (Fri 5/1 or Wed 5/6 instead).
+**Problem:** Clicking a day in the sidebar sometimes scrolled to the wrong day section.
 **Impact:** Wasted time, added places to wrong days.
 **Root cause:** `navigate-day.js` matches the shortest text containing the day string, which may not be the correct element when multiple elements contain the text.
-**Fix:** Don't rely on sidebar clicks for navigation. Instead, use JS to find the day header button directly (`button` containing "Thursday, May 7th") and call `scrollIntoView()`.
+**Fix:** Don't rely on sidebar clicks for navigation. Instead, use JS to find the day header button directly and call `scrollIntoView()`.
 
 #### 5. No delete or reorder scripts existed
 **Problem:** Had to discover deletion (`onDelete` via React fiber) and reordering (react-beautiful-dnd keyboard drag) mid-session through trial and error.
@@ -35,7 +35,7 @@
 **Fix:** Created `delete-item.js` and `reorder-item.js`. These are now part of the script library.
 
 #### 6. "Add to trip" from map search caused page crash
-**Problem:** When searching "Ura Namba" via the "Add a place" input, clicked "See result(s) on map" which opened the map search panel. Clicking "Add to trip" in the map panel navigated away from the plan page entirely (blank screen).
+**Problem:** When searching for a place via the "Add a place" input, clicked "See result(s) on map" which opened the map search panel. Clicking "Add to trip" in the map panel navigated away from the plan page entirely (blank screen).
 **Impact:** Had to reload the page and lost the flow.
 **Fix:** NEVER use the map search panel to add items. Always select from the inline dropdown results. If the place doesn't appear in inline results, try a more specific search query.
 
@@ -57,7 +57,7 @@
 
 3. **Two-step add pattern.** Adding a place requires: (1) JS focuses input, (2) `computer` types the query, (3) wait for dropdown, (4) click first result. Steps 1 and 4 can be scripted; step 2 must use real keyboard.
 
-4. **Dates in React fiber use YYYY-MM-DD format.** Not "Fri 5/1" or "Friday, May 1st". Scripts that interact with fiber data should use ISO dates.
+4. **Dates in React fiber use YYYY-MM-DD format.** Not "Fri 1/16" or "Friday, January 16th". Scripts that interact with fiber data should use ISO dates.
 
 5. **Scraper uses React fiber, not DOM text.** The `scrape-itinerary.js` script queries `[class*="PictureViewItem__placeInputHeight"]` elements and walks their fiber tree. DOM text walking is unreliable.
 

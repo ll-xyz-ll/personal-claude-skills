@@ -1,5 +1,5 @@
 // remove-from-day.js — Remove item from a specific day via dropdown
-// Params: __DAY_TO_REMOVE__ (dropdown format e.g. "Fri, May 1st")
+// Params: __DAY_TO_REMOVE__ (dropdown format e.g. "Fri, Jan 13th")
 // IMPORTANT: Panel must already be open (run open-panel.js first)
 // Returns { status, detail }
 (() => {

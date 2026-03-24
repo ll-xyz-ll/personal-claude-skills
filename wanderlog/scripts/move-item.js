@@ -1,5 +1,5 @@
 // move-item.js — Full 6-step move: open dropdown → add target day → verify → reopen → uncheck source
-// Params: __TARGET_DAY__ (dropdown format e.g. "Sun, May 3rd"), __SOURCE_DAY__ (e.g. "Fri, May 1st")
+// Params: __TARGET_DAY__ (dropdown format e.g. "Sun, Jan 15th"), __SOURCE_DAY__ (e.g. "Fri, Jan 13th")
 // IMPORTANT: Panel must already be open for this item (run open-panel.js first)
 // Returns { status, step, detail }
 //
