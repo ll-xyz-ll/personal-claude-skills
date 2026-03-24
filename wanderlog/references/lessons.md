@@ -18,7 +18,7 @@
 #### 3. `nativeInputValueSetter` doesn't trigger Wanderlog's autocomplete
 **Problem:** The old script used `Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set` to type into the search input. This updates the React state but does NOT trigger the autocomplete/search dropdown.
 **Impact:** Text appeared in the input but no search results dropdown appeared.
-**Fix:** The correct approach is a 2-step process:
+**Fix:** The correct approach is a 3-step process:
   1. **JS script** focuses the correct input (`add-place-v2.js`)
   2. **Computer tool** types via real keyboard events (`computer action=type`) which triggers autocomplete
   3. **Computer tool** or **JS script** clicks the first search result

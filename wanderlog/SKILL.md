@@ -46,7 +46,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 | `batch-add.js` | Add multiple places to a day in one call | `__TARGET_DAY__`, `__PLACES__` (JSON array) | **Preferred for bulk adds.** Uses nativeSetter + precise autocomplete click. One JS call per day. |
 | `delete-item.js` | Delete item via React fiber `onDelete` | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Immediate, no confirmation dialog. |
 | `ws-capture.js` | Capture Wanderlog's live WebSocket | none | Run once per page load. User must interact with page after. Uses `configurable: false` — cannot be undone without page reload. |
-| `reorder-item.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD), `__TARGET_INDEX__` (0-based) | Requires ws-capture.js first. Filters by date then falls back to name-only search. |
+| `reorder-item.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD), `__TARGET_INDEX__` (0-based) | Requires ws-capture.js first. Filters by date then falls back to name-only search. **Warning:** if item name is duplicated across days, ensure DATE is correct. |
 
 ### Legacy Scripts (Use Only for Cross-Day Moves)
 
