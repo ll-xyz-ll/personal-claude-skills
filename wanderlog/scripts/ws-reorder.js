@@ -1,15 +1,12 @@
-// reorder-item.js — Reorder an item within a day
-// Params: __ITEM_NAME__ (exact item name), __DATE__ (YYYY-MM-DD), __TARGET_INDEX__ (0-based)
+// ws-reorder.js — Reorder an item within a day via ShareDB WebSocket ops
+// Params: __ITEM_NAME__ (exact name), __DATE__ (YYYY-MM-DD), __TARGET_INDEX__ (0-based target position)
+// Prereq: ws-capture.js must have been run AND user must have interacted with the page
+//         so that window.__liveWS is available
 //
-// PREFERRED METHOD: Use ws-reorder.js via ShareDB WebSocket `lm` ops.
-//   Prereq: Run ws-capture.js first, then user must interact with page once.
-//   This script is a WRAPPER that delegates to ws-reorder.js logic.
-//
-// DEPRECATED METHOD: Keyboard drag via react-beautiful-dnd.
-//   Status: UNRELIABLE — lift works ~50%, drop never persists.
-//   - Programmatic onDragEnd is silently ignored by rbd
-//   - Mouse drag doesn't work via browser automation
-//   - The only reliable reorder is via ShareDB ops (ws-reorder.js)
+// How it works:
+//   1. Subscribes to the trip doc via ShareDB to get current version + section structure
+//   2. Finds the correct section index and block index for the item
+//   3. Sends a ShareDB `lm` (list move) operation to move the block
 //
 // Returns { status, detail, fromIndex, toIndex, sectionIndex }
 (() => {
@@ -20,13 +17,14 @@
 
   const ws = window.__liveWS;
   if (!ws || ws.readyState !== 1) {
-    res.detail = 'No live WebSocket captured. Run ws-capture.js first, then interact with the page.';
+    res.detail = 'No live WebSocket. Run ws-capture.js first, then interact with the page.';
     return JSON.stringify(res);
   }
 
+  // Get trip ID from URL
   const match = location.pathname.match(/\/plan\/([a-z0-9]+)/);
   if (!match) {
-    res.detail = 'Could not extract trip ID from URL';
+    res.detail = 'Could not extract trip ID from URL: ' + location.pathname;
     return JSON.stringify(res);
   }
   const tripId = match[1];
@@ -36,6 +34,8 @@
     try { responses.push(JSON.parse(event.data)); } catch(e) {}
   };
   ws.addEventListener('message', handler);
+
+  // Subscribe to get full doc snapshot
   ws.send(JSON.stringify({ a: 's', c: 'TripPlans', d: tripId, v: null }));
 
   return new Promise(resolve => {
@@ -50,20 +50,30 @@
 
       const doc = snap.data.data || snap.data;
       const version = snap.data.v || snap.v;
-      if (!doc.itinerary?.sections) {
+
+      if (!doc.itinerary || !doc.itinerary.sections) {
         ws.removeEventListener('message', handler);
-        res.detail = 'No itinerary sections in doc';
+        res.detail = 'No itinerary.sections in doc';
         resolve(JSON.stringify(res));
         return;
       }
 
-      let sectionIndex = -1, blockIndex = -1;
-      for (let si = 0; si < doc.itinerary.sections.length; si++) {
-        const sec = doc.itinerary.sections[si];
+      // Find the section containing ITEM_NAME
+      let sectionIndex = -1;
+      let blockIndex = -1;
+      const sections = doc.itinerary.sections;
+
+      for (let si = 0; si < sections.length; si++) {
+        const sec = sections[si];
         if (!sec.blocks) continue;
         for (let bi = 0; bi < sec.blocks.length; bi++) {
-          const name = sec.blocks[bi].place?.name || sec.blocks[bi].place?.googlePlace?.name || '';
-          if (name === ITEM_NAME) { sectionIndex = si; blockIndex = bi; break; }
+          const b = sec.blocks[bi];
+          const name = b.place?.name || b.place?.googlePlace?.name || '';
+          if (name === ITEM_NAME) {
+            sectionIndex = si;
+            blockIndex = bi;
+            break;
+          }
         }
         if (sectionIndex >= 0) break;
       }
@@ -78,28 +88,32 @@
       if (blockIndex === TARGET_INDEX) {
         ws.removeEventListener('message', handler);
         res.status = 'no_change';
-        res.detail = 'Already at index ' + TARGET_INDEX;
+        res.detail = '"' + ITEM_NAME + '" is already at index ' + TARGET_INDEX;
+        res.sectionIndex = sectionIndex;
         resolve(JSON.stringify(res));
         return;
       }
 
+      // Send lm (list move) operation
+      const op = [{ p: ['itinerary', 'sections', sectionIndex, 'blocks', blockIndex], lm: TARGET_INDEX }];
       ws.send(JSON.stringify({
         a: 'op', c: 'TripPlans', d: tripId,
         v: version, seq: Date.now() % 100000, x: {},
-        op: [{ p: ['itinerary', 'sections', sectionIndex, 'blocks', blockIndex], lm: TARGET_INDEX }]
+        op: op
       }));
 
+      // Wait for ack
       setTimeout(() => {
         ws.removeEventListener('message', handler);
-        const ack = responses.find(r => r.a === 'op' || (r.v !== undefined && r.v > version));
+        const ack = responses.find(r => r.a === 'op' || r.v !== undefined);
         if (ack && !ack.error) {
           res.status = 'reordered';
-          res.detail = 'Moved "' + ITEM_NAME + '" from ' + blockIndex + ' to ' + TARGET_INDEX;
+          res.detail = 'Moved "' + ITEM_NAME + '" from index ' + blockIndex + ' to ' + TARGET_INDEX + ' in section ' + sectionIndex;
           res.fromIndex = blockIndex;
           res.toIndex = TARGET_INDEX;
           res.sectionIndex = sectionIndex;
         } else {
-          res.detail = 'Op failed: ' + (ack?.error || 'no ack');
+          res.detail = 'Op failed: ' + (ack?.error || 'no ack received');
         }
         resolve(JSON.stringify(res));
       }, 2000);

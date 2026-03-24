@@ -1,16 +1,15 @@
 ---
 name: wanderlog
-version: "4.0"
+version: 4.1.0
 description: >
   Manage, plan, and edit Wanderlog trip itineraries via browser automation.
-  Supports: querying what's on each day, optimizing/rearranging items between days,
+  Supports querying what's on each day, optimizing/rearranging items between days,
   planning itineraries from scratch, adding new places, removing items, and batch moves.
   This skill should be used when the user says "rearrange my Wanderlog", "what's on my itinerary",
   "optimize my trip schedule", "move X to day Y", "add a restaurant to my trip",
-  "plan my food itinerary", "remove X from the trip", "show me what's on each day",
+  "plan my travel itinerary", "remove X from the trip", "show me what's on each day",
   "spread out the food across days", or similar trip management requests.
   Requires Chrome tab with Wanderlog open and user logged in.
-  If the trip hasn't been created yet, user must create it on wanderlog.com and provide the URL.
 ---
 
 # Wanderlog Trip Manager
@@ -22,7 +21,8 @@ description: >
 3. **React fiber is the source of truth.** Use `__reactFiber` traversal for item metadata. Don't rely on DOM text matching.
 4. **NEVER use map search panel.** When adding places, always select from the inline autocomplete dropdown. Clicking "See result(s) on map" or "Add to trip" from the map panel can crash the page.
 5. **Verify after every batch.** Run `scrape-itinerary.js` after add/delete/reorder to confirm final state.
-6. **Read `lessons.md`** in this skill directory for detailed failure modes and fixes from prior sessions.
+
+For detailed rationale and failure analysis behind these rules, see `references/lessons.md`.
 
 ## Setup (Always Do First)
 
@@ -41,8 +41,11 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 |---|---|---|---|
 | `scrape-itinerary.js` | Read full itinerary via React fiber → JSON | none | Uses `PictureViewItem` + fiber. Returns `{ days, itemsByDay, stats }`. Dates are YYYY-MM-DD. |
 | `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, January 15") | Step 1 of add flow. Then use `computer tool type` for search query. |
+| `click-first-result.js` | Click first place result in autocomplete dropdown | none | Step 3 of add flow. Run after typing search query. Retries for 2s. |
 | `delete-item.js` | Delete item via React fiber `onDelete` | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Immediate, no confirmation dialog. |
-| `reorder-item.js` | Focus drag handle for keyboard reorder | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Step 1 of reorder. Then: `key space` → `key ArrowUp/Down repeat:N` → `key space`. |
+| `ws-capture.js` | Capture Wanderlog's live WebSocket | none | Run once per page load. User must interact with page after. |
+| `ws-reorder.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__`, `__TARGET_INDEX__` | Requires ws-capture.js first. Reliable — persists to server. |
+| `reorder-item.js` | Reorder item (wrapper for ws-reorder) | `__ITEM_NAME__`, `__DATE__`, `__TARGET_INDEX__` | Same as ws-reorder.js. Preferred entry point. |
 
 ### Legacy Scripts (Use Only for Cross-Day Moves)
 
@@ -51,12 +54,11 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 | `open-panel.js` | Open item detail panel | `__ITEM_NAME__` |
 | `move-item.js` | Move item between days (steps 3-6) | `__TARGET_DAY__`, `__SOURCE_DAY__` |
 | `remove-from-day.js` | Remove item from a day | `__DAY_TO_REMOVE__` |
-| `navigate-day.js` | Navigate to a day via sidebar | `__DAY_TEXT__` |
+| `navigate-day.js` | Navigate to a day via sidebar (**unreliable** — prefer `scrollIntoView()`) | `__DAY_TEXT__` |
 | `find-items.js` | Batch-find items in DOM | `__ITEM_NAMES__` (JSON array) |
 | `read-dropdown.js` | Read checked days in dropdown | none (dropdown must be open) |
 | `verify-move.js` | Check panel state after move | none (panel must be open) |
 | `close-panel.js` | Close the right panel | none |
-| `add-place.js` | **DEPRECATED** — use `add-place-v2.js` | — |
 
 ## Capabilities
 
@@ -65,10 +67,10 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 2. Answer the user's question from the JSON data
 
 ### 2. Add Place ("add Restaurant X to Friday")
-**Three-step process — no clicking:**
+**Four-step process — no clicking:**
 1. Run `add-place-v2.js` with `__TARGET_DAY__` = `"Friday, January 16"` → focuses the input
 2. Use `computer` tool `action=type` with the search query → triggers autocomplete dropdown
-3. Use `computer` tool `action=screenshot` to see results, then click first result OR use JS to find and click the correct result element
+3. Run `click-first-result.js` to select the first place result
 4. Verify with `scrape-itinerary.js`
 
 **Batch adding:** Repeat steps 1-3 for each place. The `add-place-v2.js` script re-finds the input each time.
@@ -79,15 +81,14 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 3. Verify with `scrape-itinerary.js`
 
 ### 4. Reorder Within a Day ("move X to the top of Friday")
-**Keyboard drag via react-beautiful-dnd:**
-1. Run `scrape-itinerary.js` to get current order and calculate moves needed
-2. Run `reorder-item.js` with `__ITEM_NAME__` and `__DATE__` → focuses the drag handle
-3. `computer` tool: `key "space"` to lift
-4. `computer` tool: `key "ArrowUp"` (or `"ArrowDown"`) with `repeat: N` (N = positions to move)
-5. `computer` tool: `key "space"` to drop
-6. Verify with `scrape-itinerary.js`
+**Via ShareDB WebSocket (reliable):**
+1. Run `ws-capture.js` to patch WebSocket (once per page load)
+2. Ask user to click any item on the trip (flushes a WS send, captures the instance)
+3. Run `scrape-itinerary.js` to get current order and calculate target index
+4. Run `reorder-item.js` with `__ITEM_NAME__`, `__DATE__`, `__TARGET_INDEX__` (0-based)
+5. Verify with `scrape-itinerary.js`
 
-**WARNING:** Calling `onDragEnd` programmatically does NOT work. Only real keyboard events persist the reorder.
+**NOTE:** Keyboard drag via react-beautiful-dnd is unreliable — lift works ~50%, drop never persists. Programmatic `onDragEnd` is silently ignored. ShareDB `lm` ops are the only reliable method.
 
 ### 5. Move Item Between Days ("move Restaurant X to Sunday")
 1. `open-panel.js` with `__ITEM_NAME__` = "Restaurant X"
@@ -104,7 +105,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 ### 7. Plan From Scratch ("plan a 3-day food trip")
 1. Use web search + knowledge to suggest restaurants/places
 2. Present plan to user for approval
-3. For each approved item: `add-place-v2.js` → `computer type` → select result
+3. For each approved item: `add-place-v2.js` → `computer type` → `click-first-result.js`
 4. Reorder items within each day using `reorder-item.js` + keyboard
 5. Verify with `scrape-itinerary.js`
 
@@ -141,6 +142,7 @@ Moving an item = **add to target day, then remove from source day**. This is a 2
 | Search typed but no dropdown | Used `nativeInputValueSetter` | Must use `computer` tool `action=type` for real keyboard events |
 | Page went blank/crashed | Clicked "Add to trip" in map search panel | NEVER use map search. Always pick from inline autocomplete |
 | Sidebar navigation went to wrong day | `navigate-day.js` matched wrong element | Use JS to find day header button and `scrollIntoView()` directly |
-| `onDragEnd()` didn't persist reorder | Called programmatically | Only real keyboard events work: focus → space → arrows → space |
-| `add-place.js` couldn't find button | Script searched for `<button>` not `<input>` | Use `add-place-v2.js` which queries `input[placeholder="Add a place"]` |
+| `onDragEnd()` didn't persist reorder | Called programmatically | rbd ignores calls outside drag lifecycle. Use ShareDB `lm` ops via `ws-reorder.js` |
+| Keyboard drag unreliable | Lift ~50%, drop never persists | Use ShareDB `lm` ops instead. See `ws-capture.js` + `ws-reorder.js` |
+| No WebSocket captured | `ws-capture.js` run but no user interaction | User must click/interact with the trip after running ws-capture.js |
 | Item not in DOM | Off-screen / lazy-loaded | Scroll to day header via JS `scrollIntoView()` first |
