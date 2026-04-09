@@ -9,7 +9,7 @@
 //   1. Run this script (patches WebSocket.prototype.send)
 //   2. Ask user to click any item on the trip
 //   3. Check: window.__liveWS?.readyState === 1
-//   4. Use ws-reorder.js or send ShareDB ops directly
+//   4. Use reorder-item.js or send ShareDB ops directly
 (() => {
   const res = { status: 'failed', detail: '' };
 

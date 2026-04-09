@@ -9,7 +9,6 @@ description: >
   "optimize my trip schedule", "move X to day Y", "add a restaurant to my trip",
   "plan my travel itinerary", "remove X from the trip", "show me what's on each day",
   "spread out the food across days", or similar trip management requests.
-  Requires Chrome tab with Wanderlog open and user logged in.
 ---
 
 # Wanderlog Trip Manager
@@ -21,6 +20,8 @@ description: >
 3. **React fiber is the source of truth.** Use `__reactFiber` traversal for item metadata. Don't rely on DOM text matching.
 4. **NEVER use map search panel.** When adding places, always select from the inline autocomplete dropdown. Clicking "See result(s) on map" or "Add to trip" from the map panel can crash the page.
 5. **Verify after every batch.** Run `scrape-itinerary.js` after add/delete/reorder to confirm final state.
+6. **NEVER send ShareDB `li` (insert) or `oi` (object insert) ops.** Malformed blocks WILL permanently corrupt the trip with NO recovery. Only use `lm` (list move) for reorder. For add/delete, use DOM-based approaches that go through Wanderlog's own code.
+7. **Snapshot before any write.** Before ANY destructive operation, save the full itinerary state to a local file. Test experimental operations on a throwaway trip first.
 
 For detailed rationale and failure analysis behind these rules, see `references/lessons.md`.
 
@@ -40,11 +41,12 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 | Script | Purpose | Params | Notes |
 |---|---|---|---|
 | `scrape-itinerary.js` | Read full itinerary via React fiber → JSON | none | Uses `PictureViewItem` + fiber. Returns `{ days, itemsByDay, stats }`. Dates are YYYY-MM-DD. |
-| `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, January 15") | Step 1 of add flow. Then use `computer tool type` for search query. |
-| `click-first-result.js` | Click first place result in autocomplete dropdown | none | Step 3 of add flow. Run after typing search query. Retries for 2s. |
+| `add-place-v2.js` | Focus "Add a place" input for a specific day | `__TARGET_DAY__` (e.g. "Thursday, January 15") | Step 1 of add flow. Excludes "Places to visit" inputs. Day must be expanded first. |
+| `click-first-result.js` | Click first place result in autocomplete dropdown | none | Step 3 of add flow. Uses `role="option"` + SVG marker targeting. Excludes itinerary items/sidebar. Retries for 3s. |
+| `batch-add.js` | Add multiple places to a day in one call | `__TARGET_DAY__`, `__PLACES__` (JSON array) | **Preferred for bulk adds.** Uses nativeSetter + precise autocomplete click. One JS call per day. |
 | `delete-item.js` | Delete item via React fiber `onDelete` | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD) | Immediate, no confirmation dialog. |
 | `ws-capture.js` | Capture Wanderlog's live WebSocket | none | Run once per page load. User must interact with page after. Uses `configurable: false` — cannot be undone without page reload. |
-| `reorder-item.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD), `__TARGET_INDEX__` (0-based) | Requires ws-capture.js first. Filters by date then falls back to name-only search. |
+| `reorder-item.js` | Reorder item via ShareDB `lm` op | `__ITEM_NAME__`, `__DATE__` (YYYY-MM-DD), `__TARGET_INDEX__` (0-based) | Requires ws-capture.js first. Filters by date then falls back to name-only search. **Warning:** if item name is duplicated across days, ensure DATE is correct. |
 
 ### Legacy Scripts (Use Only for Cross-Day Moves)
 
@@ -66,13 +68,19 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 2. Answer the user's question from the JSON data
 
 ### 2. Add Place ("add Restaurant X to Friday")
-**Four-step process — no clicking:**
+
+**Preferred: batch-add.js (one JS call per day, fully scripted):**
+1. Expand the target day section first (click day header like "Friday, May 1st")
+2. Run `batch-add.js` with `__TARGET_DAY__` = `"Friday, May 1"` and `__PLACES__` = `["Ramen Shop", "Coffee Place"]`
+3. Verify with `scrape-itinerary.js`
+
+**Alternative: manual three-step process:**
 1. Run `add-place-v2.js` with `__TARGET_DAY__` = `"Friday, January 16"` → focuses the input
 2. Use `computer` tool `action=type` with the search query → triggers autocomplete dropdown
 3. Run `click-first-result.js` to select the first place result
 4. Verify with `scrape-itinerary.js`
 
-**Batch adding:** Repeat steps 1-3 for each place. The `add-place-v2.js` script re-finds the input each time.
+**Important:** Day sections must be EXPANDED before adding. Wanderlog virtualizes collapsed days — their "Add a place" inputs don't exist in the DOM until expanded.
 
 ### 3. Delete Item ("remove Place X from the trip")
 1. Run `scrape-itinerary.js` to get exact item name and date (YYYY-MM-DD)
@@ -104,7 +112,7 @@ All automation scripts are in the `scripts/` subdirectory. Read a script with th
 ### 7. Plan From Scratch ("plan a 3-day food trip")
 1. Use web search + knowledge to suggest restaurants/places
 2. Present plan to user for approval
-3. For each approved item: `add-place-v2.js` → `computer type` → `click-first-result.js`
+3. Expand each day section, then use `batch-add.js` to add all approved places per day
 4. Reorder items within each day using `reorder-item.js` (ShareDB `lm` ops)
 5. Verify with `scrape-itinerary.js`
 
@@ -138,10 +146,13 @@ Moving an item = **add to target day, then remove from source day**. This is a 2
 |---|---|---|
 | "Change photo" dialog | Clicked image | Use `open-panel.js` — it clicks title text |
 | Item removed from ALL days | Unchecked source before target confirmed | `move-item.js` has built-in guard |
-| Search typed but no dropdown | Used `nativeInputValueSetter` | Must use `computer` tool `action=type` for real keyboard events |
+| Search typed but no dropdown | Missing `dispatchEvent` after `nativeSetter` | Use `nativeSetter` + `dispatchEvent(new Event('input', {bubbles:true}))`. Or fall back to `computer type`. |
+| Trip permanently corrupted | Sent raw ShareDB `li` op with malformed block | NEVER send `li`/`oi` ops. Use DOM-based add flow only. |
+| Wrong place added (batch) | `clickFirstResult` matched sidebar/existing items | Use `batch-add.js` which excludes PictureViewItem ancestors and sidebar |
+| Items went to "Places to visit" | Input finder matched overview section | Use updated `add-place-v2.js` which validates itinerary section |
 | Page went blank/crashed | Clicked "Add to trip" in map search panel | NEVER use map search. Always pick from inline autocomplete |
 | Sidebar navigation went to wrong day | `navigate-day.js` matched wrong element | Use JS to find day header button and `scrollIntoView()` directly |
-| `onDragEnd()` didn't persist reorder | Called programmatically | rbd ignores calls outside drag lifecycle. Use ShareDB `lm` ops via `ws-reorder.js` |
-| Keyboard drag unreliable | Lift ~50%, drop never persists | Use ShareDB `lm` ops instead. See `ws-capture.js` + `ws-reorder.js` |
+| `onDragEnd()` didn't persist reorder | Called programmatically | rbd ignores calls outside drag lifecycle. Use ShareDB `lm` ops via `reorder-item.js` |
+| Keyboard drag unreliable | Lift ~50%, drop never persists | Use ShareDB `lm` ops instead. See `ws-capture.js` + `reorder-item.js` |
 | No WebSocket captured | `ws-capture.js` run but no user interaction | User must click/interact with the trip after running ws-capture.js |
 | Item not in DOM | Off-screen / lazy-loaded | Scroll to day header via JS `scrollIntoView()` first |
